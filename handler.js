@@ -1,209 +1,523 @@
-const db = require("./workoutdb");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const util = require("util");
-const schedule = require("node-schedule");
+const createConnection = require("./workoutdb");
 
-// Assuming you have a createConnection function from the mysql2 library
-const { createConnection } = require("mysql2");
-
-// Promisify the db.query function
-const queryAsync = util.promisify(db.query).bind(db);
-
-const scheduledEvents = {};
+// Handler Register
 
 const register = async (request, h) => {
-  try {
-    const { username, email, password } = request.payload;
+  const { username, email, password } = request.payload;
 
-    // Hash password using bcrypt
-    const hashedPassword = await bcrypt.hash(password, 10);
+  const db = await createConnection();
 
-    // Save user information to the database
-    const connection = createConnection();
-    connection.connect();
+  const [usernameRows] = await db.execute(
+    "SELECT * FROM users WHERE username = ?",
+    [username]
+  );
 
-    const [results, fields] = await queryAsync(
-      "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-      [username, email, hashedPassword]
-    );
-
-    connection.end();
-
-    console.log("Registration successful");
-    return "Registration successful";
-  } catch (error) {
-    console.error("Error registering user:", error);
-    return h.response({ error: "Internal Server Error" }).code(500);
+  if (usernameRows.length > 0) {
+    return h.response({
+      status: "Error",
+      message: "Username sudah terdaftar, mohon gunakan username yang lain",
+      code: 400,
+    });
   }
+
+  const [emailRows] = await db.execute("SELECT * FROM users WHERE email = ?", [
+    email,
+  ]);
+
+  if (emailRows.length > 0) {
+    return h.response({
+      status: "Error",
+      message: "Email sudah terdaftar",
+      code: 400,
+    });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const [rows, fields] = await db.execute(
+    "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
+    [username, email, hashedPassword]
+  );
+
+  return h.response({
+    status: "Success",
+    message: "Data berhasil ditambahkan",
+    code: 201,
+  });
 };
+
+// Handler Login
 
 const login = async (request, h) => {
-  try {
-    const { username, email, password } = request.payload;
+  const { username, email, password } = request.payload;
+  console.log(username, email, password);
 
-    // Create a connection to the database
-    const connection = createConnection();
-    connection.connect();
+  // Pastikan username atau email dan password tersedia
+  if (!username && !email) {
+    return "Login gagal. Harap masukkan username atau email.";
+  }
+  if (!password) {
+    return "Login gagal. Harap masukkan password.";
+  }
 
-    // Check if the user exists in the database (based on username or email)
-    const [results, fields] = await queryAsync(
-      "SELECT * FROM users WHERE username = ? OR email = ?",
-      [username, email]
-    );
+  const db = await createConnection();
 
-    // Close the database connection
-    connection.end();
+  let query = "";
+  let queryParams = [];
 
-    if (results.length > 0) {
-      // User found, check the password
-      const isValidPassword = await bcrypt.compare(
-        password,
-        results[0].password
+  if (username) {
+    query = "SELECT * FROM users WHERE username = ?";
+    queryParams = [username];
+  } else if (email) {
+    query = "SELECT * FROM users WHERE email = ?";
+    queryParams = [email];
+  }
+
+  const [rows, fields] = await db.execute(query, queryParams);
+
+  if (rows.length > 0) {
+    const isValidPassword = await bcrypt.compare(password, rows[0].password);
+
+    if (isValidPassword) {
+      const token = jwt.sign(
+        { username: rows[0].username, email: rows[0].email },
+        "rahasiakunci",
+        { expiresIn: "1h" }
       );
 
-      if (isValidPassword) {
-        // Create JWT token
-        const token = jwt.sign(
-          { username: results[0].username, email: results[0].email },
-          "rahasiakunci",
-          { expiresIn: "1h" }
-        );
+      return h.response({
+        status: "Success",
+        message: "Berhasil Login",
+        code: 200,
+      });
+    }
+  }
 
-        return { token };
-      }
+  return h.response({
+    status: "Failed",
+    message:
+      "Login gagal. Periksa kembali username, email, dan password Anda yaa...",
+    code: 404,
+  });
+};
+
+const getExercise = async (request, h) => {
+  const { muscle_id } = request.query;
+
+  if (isNaN(muscle_id)) {
+    return h.response({ error: "Invalid muscle_id" }).code(400);
+  }
+
+  const db = await createConnection();
+
+  const sql = `
+    SELECT
+      e.id,
+      e.name,
+      e.rating,
+      e.level,
+      e.cal_estimation,
+      e.required_equipment,
+      e.overview,
+      c.name AS category_name,
+      e.is_support_interactive,
+      m.name AS muscle_name,
+      e.gif_url,
+      e.photo_url
+    FROM
+      exercise e
+      LEFT JOIN category c ON e.category_id = c.id
+      LEFT JOIN muscle m ON e.muscle_id = m.id
+    WHERE
+      e.muscle_id = ?
+  `;
+
+  try {
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql, [muscle_id]);
+
+    // Check if there are rows returned
+    if (rows.length === 0) {
+      return h.response({ error: "No matching data found" }).code(404);
     }
 
-    return "Login failed. Check your username, email, and password.";
+    // Map the rows to the desired response format
+    const exerciseData = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      rating: row.rating,
+      level: row.level,
+      cal_estimation: row.cal_estimation,
+      required_equipment: row.required_equipment,
+      overview: row.overview,
+      category: {
+        name: row.category_name,
+      },
+      is_support_interactive: row.is_support_interactive,
+      muscle: {
+        name: row.muscle_name,
+      },
+      gif_url: row.gif_url,
+      photo_url: row.photo_url,
+    }));
+
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: 200,
+      data: exerciseData,
+    };
+
+    return h.response(response);
   } catch (error) {
-    console.error("Error executing login query:", error);
+    console.error("Error executing exercise query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
   }
 };
 
-const getWorkout = async (request, h) => {
-  try {
-    const { category_id } = request.query;
+const getExerciseByEquipment = async (request, h) => {
+  const { equipment } = request.query;
 
-    if (isNaN(category_id)) {
-      return h.response({ error: "Invalid category_id" }).code(400);
+  if (!equipment) {
+    return h.response({ error: "Missing equipment parameter" }).code(400);
+  }
+
+  const db = await createConnection();
+
+  const sql = `
+    SELECT
+      e.id,
+      e.name,
+      e.rating,
+      e.level,
+      e.cal_estimation,
+      e.required_equipment,
+      e.overview,
+      e.step,
+      c.name AS category_name,
+      e.is_support_interactive,
+      m.name AS muscle_name,
+      e.gif_url,
+      e.photo_url
+    FROM
+      exercise e
+      LEFT JOIN category c ON e.category_id = c.id
+      LEFT JOIN muscle m ON e.muscle_id = m.id
+      LEFT JOIN equipment eq ON e.equipment_id = eq.id
+    WHERE
+      eq.name = ?
+  `;
+
+  try {
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql, [equipment]);
+
+    // Check if there are rows returned
+    if (rows.length === 0) {
+      return h.response({ error: "No matching data found" }).code(404);
     }
 
-    const sql = "SELECT * FROM workout_info WHERE category_id = ?";
+    // Assuming there is only one result for simplicity
+    const exerciseData = rows[0];
 
-    const [hasil] = await queryAsync(sql, [category_id]);
-
-    return h.response({
-      status: "success",
+    const response = {
       data: {
-        hasil,
+        id: exerciseData.id,
+        name: exerciseData.name,
+        rating: exerciseData.rating,
+        level: exerciseData.level,
+        cal_estimation: exerciseData.cal_estimation,
+        required_equipment: {
+          name: equipment,
+        },
+        overview: exerciseData.overview,
+        step: exerciseData.step,
+        category: {
+          name: exerciseData.category_name,
+        },
+        is_support_interactive: exerciseData.is_support_interactive,
+        muscle: {
+          name: exerciseData.muscle_name,
+        },
+        gif_url: exerciseData.gif_url,
+        photo_url: exerciseData.photo_url,
       },
-    });
+    };
+
+    return h.response(response);
+  } catch (error) {
+    console.error("Error executing exercise query:", error);
+    return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
+  }
+};
+
+const getExerciseByQuery = async (request, h) => {
+  const { query } = request.query;
+
+  if (!query) {
+    return h
+      .response({ error: "Invalid or missing query parameter" })
+      .code(400);
+  }
+
+  const db = await createConnection();
+
+  const sql = `
+    SELECT
+      e.id,
+      e.name,
+      e.rating,
+      e.level,
+      e.cal_estimation,
+      e.required_equipment,
+      e.overview,
+      c.name AS category_name,
+      e.is_support_interactive,
+      m.name AS muscle_name,
+      e.gif_url,
+      e.photo_url
+    FROM
+      exercise e
+      LEFT JOIN category c ON e.category_id = c.id
+      LEFT JOIN muscle m ON e.muscle_id = m.id
+    WHERE
+      e.name LIKE ?
+  `;
+
+  try {
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql, [`%${query}%`]);
+
+    // Check if there are rows returned
+    if (rows.length === 0) {
+      return h.response({ error: "No matching data found" }).code(404);
+    }
+
+    // Map the rows to the desired response format
+    const exerciseData = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      rating: row.rating,
+      level: row.level,
+      cal_estimation: row.cal_estimation,
+      required_equipment: row.required_equipment,
+      overview: row.overview,
+      category: {
+        name: row.category_name,
+      },
+      is_support_interactive: row.is_support_interactive,
+      muscle: {
+        name: row.muscle_name,
+      },
+      gif_url: row.gif_url,
+      photo_url: row.photo_url,
+    }));
+
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: 200,
+      data: exerciseData,
+    };
+
+    return h.response(response);
+  } catch (error) {
+    console.error("Error executing exercise query:", error);
+    return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
+  }
+};
+
+const getDetailExercise = async (request, h) => {
+  const { exercise_id } = request.query;
+
+  if (!exercise_id) {
+    return h.response({ error: "Missing exercise_name parameter" }).code(400);
+  }
+
+  const db = await createConnection();
+
+  const sql = `
+    SELECT
+      e.id,
+      e.name,
+      e.rating,
+      e.level,
+      e.cal_estimation,
+      e.required_equipment,
+      e.overview,
+      e.step,
+      c.name AS category_name,
+      e.is_support_interactive,
+      i.repetition AS interactive_repetition,
+      i.set_count AS interactive_set_count,
+      i.rest_interval AS interactive_rest_interval,
+      b.rightArm,
+      b.leftArm,
+      b.rightLeg,
+      b.leftLeg,
+      m.name AS muscle_name,
+      e.gif_url,
+      e.photo_url
+    FROM
+      exercise e
+      LEFT JOIN category c ON e.category_id = c.id
+      LEFT JOIN interactive_exercise_setting i ON e.interactive_setting_id = i.id
+      LEFT JOIN body_part_segment_value b ON e.interactive_body_part_segment_value_id = b.id
+      LEFT JOIN muscle m ON e.muscle_id = m.id
+    WHERE
+      e.id = ?
+  `;
+
+  try {
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql, [exercise_id]);
+
+    // Check if there are rows returned
+    if (rows.length === 0) {
+      return h.response({ error: "No matching data found" }).code(404);
+    }
+
+    // Assuming there is only one result for simplicity
+    const exerciseData = rows[0];
+
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: 200,
+      data: {
+        id: exerciseData.id,
+        name: exerciseData.name,
+        rating: exerciseData.rating,
+        level: exerciseData.level,
+        cal_estimation: exerciseData.cal_estimation,
+        required_equipment: exerciseData.required_equipment,
+        overview: exerciseData.overview,
+        step: exerciseData.step,
+        category: {
+          name: exerciseData.category_name,
+        },
+        is_support_interactive: exerciseData.is_support_interactive,
+        interactive_setting: {
+          repetition: exerciseData.interactive_repetition,
+          set: exerciseData.interactive_set_count,
+          rest_interval: exerciseData.interactive_rest_interval,
+        },
+        interactive_body_part_segment_value: {
+          rightArm: exerciseData.rightArm,
+          leftArm: exerciseData.leftArm,
+          rightLeg: exerciseData.rightLeg,
+          leftLeg: exerciseData.leftLeg,
+        },
+        muscle: {
+          name: exerciseData.muscle_name,
+        },
+        gif_url: exerciseData.gif_url,
+        photo_url: exerciseData.photo_url,
+      },
+    };
+
+    return h.response(response);
   } catch (error) {
     console.error("Error executing workout query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
   }
 };
 
-const getTopRatedWorkouts = async (request, h) => {
+const getMuscle = async (request, h) => {
+  const db = await createConnection();
+
+  const sql = `SELECT * FROM muscle`;
+
   try {
-    const { category_id } = request.query;
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql);
 
-    if (isNaN(category_id)) {
-      return h.response({ error: "Invalid category_id" }).code(400);
-    }
-
-    const sql = "SELECT * FROM workout_info ORDER BY rating DESC LIMIT 5";
-
-    const [topRatedWorkouts] = await queryAsync(sql, [category_id]);
-
-    return h.response({
-      status: "success",
-      data: {
-        topRatedWorkouts,
-      },
-    });
-  } catch (error) {
-    console.error("Error executing top rated workout query:", error);
-    return h.response({ error: "Internal Server Error" }).code(500);
-  }
-};
-
-const postschedule = async (request, h) => {
-  try {
-    const { eventId, date } = request.payload;
-
-    if (!eventId || !date) {
-      return h.response({ error: "eventId and date are required." }).code(400);
-    }
-
-    const scheduledDate = new Date(date);
-    if (isNaN(scheduledDate)) {
-      return h.response({ error: "Invalid date format." }).code(400);
-    }
-
-    const job = schedule.scheduleJob(eventId, scheduledDate, () => {
-      console.log(`Event ${eventId} executed at ${new Date()}`);
-      // You can perform additional actions here when the event is triggered
-    });
-
-    scheduledEvents[eventId] = {
-      job,
-      scheduledDate,
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: 200,
+      data: rows,
     };
 
-    return h
-      .response({ message: `Event ${eventId} scheduled successfully.` })
-      .code(201);
+    return h.response(response);
   } catch (error) {
-    console.error("Error scheduling event:", error);
+    console.error("Error executing exercise query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
   }
 };
 
-const getschedule = async (request, h) => {
+const getCategory = async (request, h) => {
+  const db = await createConnection();
+
+  const sql = `SELECT * FROM category`;
+
   try {
-    const scheduledEventsInfo = {};
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql);
 
-    // Extract necessary information from scheduledEvents
-    Object.keys(scheduledEvents).forEach((eventId) => {
-      const { scheduledDate } = scheduledEvents[eventId];
-      scheduledEventsInfo[eventId] = { scheduledDate };
-    });
+    // Assuming there is only one result for simplicity
+    const categoryData = rows[0];
 
-    return { scheduledEvents: scheduledEventsInfo };
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: rows,
+    };
+
+    return h.response(response);
   } catch (error) {
-    console.error("Error getting schedule:", error);
+    console.error("Error executing exercise query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
   }
 };
 
-const deleteschedule = async (request, h) => {
-  try {
-    const { eventId } = request.params;
+//Handler getTopRatedWorkouts berfungsi untuk mengambil workout dengan rating terbaik
 
-    if (!scheduledEvents[eventId]) {
-      return h.response({ error: `Event ${eventId} not found.` }).code(404);
-    }
+const getTopRatedExercise = async (request, h) => {
+  const db = await createConnection();
+  const sql = "SELECT * FROM exercise ORDER BY rating DESC LIMIT 5";
 
-    const { job, scheduledDate } = scheduledEvents[eventId];
-    job.cancel();
-
-    delete scheduledEvents[eventId];
-
-    return { message: `Event ${eventId} canceled.` };
-  } catch (error) {
-    console.error("Error deleting schedule:", error);
+  const [rows] = await db.execute(sql).catch((error) => {
+    console.error("Error executing top rated workout query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
-  }
+  });
+
+  return h.response({
+    status: "Success",
+    message: "Data berhasil diambil",
+    code: 200,
+    rows,
+  });
 };
 
 module.exports = {
   register,
   login,
-  getWorkout,
-  getTopRatedWorkouts,
-  postschedule,
-  getschedule,
-  deleteschedule,
+  getExercise,
+  getExerciseByEquipment,
+  getExerciseByQuery,
+  getDetailExercise,
+  getMuscle,
+  getCategory,
+  getTopRatedExercise,
 };

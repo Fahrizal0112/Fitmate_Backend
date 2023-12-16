@@ -1,4 +1,14 @@
-const { register, login, getWorkout, getTopRatedWorkouts, postschedule, getschedule, deleteschedule } = require("./handler");
+const {
+  register,
+  login,
+  getExercise,
+  getExerciseByEquipment,
+  getExerciseByQuery,
+  getDetailExercise,
+  getMuscle,
+  getCategory,
+  getTopRatedExercise,
+} = require("./handler");
 
 const routes = [
   {
@@ -7,38 +17,44 @@ const routes = [
     handler: register,
   },
   {
-    method: "GET",
+    method: "POST",
     path: "/login",
     handler: login,
   },
-  /*{
+  {
+    method: "GET",
+    path: "/getExercise",
+    handler: getExercise,
+  },
+  {
+    method: "GET",
+    path: "/getExerciseByEquipment",
+    handler: getExerciseByEquipment,
+  },
+  {
+    method: "GET",
+    path: "/getExerciseByQuery",
+    handler: getExerciseByQuery,
+  },
+  {
+    method: "GET",
+    path: "/getDetailExercise",
+    handler: getDetailExercise,
+  },
+  {
+    method: "GET",
+    path: "/getMuscle",
+    handler: getMuscle,
+  },
+  {
     method: "GET",
     path: "/getCategory",
-  },*/
-  {
-    method: "GET",
-    path: "/getWorkout",
-    handler: getWorkout,
+    handler: getCategory,
   },
   {
     method: "GET",
-    path: "/getTopRatedWorkouts",
-    handler: getTopRatedWorkouts,
-  },
-  {
-    method: "POST",
-    path: "/schedule",
-    handler: postschedule,
-  },
-  {
-    method: "GET",
-    path: "/schedule",
-    handler: getschedule,
-  },
-  {
-    method: "DELETE",
-    path: "/schedule/{eventId}",
-    handler: deleteschedule,
+    path: "/getTopRatedExercise",
+    handler: getTopRatedExercise,
   },
 ];
 
