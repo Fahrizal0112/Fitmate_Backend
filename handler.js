@@ -357,6 +357,7 @@ const getDetailExercise = async (request, h) => {
       e.required_equipment,
       e.overview,
       e.step,
+      e.body_part_needed,
       c.name AS category_name,
       e.is_support_interactive,
       i.repetition AS interactive_repetition,
@@ -404,6 +405,7 @@ const getDetailExercise = async (request, h) => {
         required_equipment: exerciseData.required_equipment,
         overview: exerciseData.overview,
         step: exerciseData.step,
+        body_part_needed: exerciseData.body_part_needed.split(","),
         category: {
           name: exerciseData.category_name,
         },
@@ -494,20 +496,80 @@ const getCategory = async (request, h) => {
 //Handler getTopRatedWorkouts berfungsi untuk mengambil workout dengan rating terbaik
 
 const getTopRatedExercise = async (request, h) => {
+  const { limit } = request.query;
+
+  if (isNaN(limit)) {
+    return h.response({ error: "Invalid limit" }).code(400);
+  }
   const db = await createConnection();
-  const sql = "SELECT * FROM exercise ORDER BY rating DESC LIMIT 5";
 
-  const [rows] = await db.execute(sql).catch((error) => {
-    console.error("Error executing top rated workout query:", error);
+  const sql = `
+    SELECT
+      e.id,
+      e.name,
+      e.rating,
+      e.level,
+      e.cal_estimation,
+      e.required_equipment,
+      e.overview,
+      c.name AS category_name,
+      e.is_support_interactive,
+      m.name AS muscle_name,
+      e.gif_url,
+      e.photo_url
+    FROM
+      exercise e
+      LEFT JOIN category c ON e.category_id = c.id
+      LEFT JOIN muscle m ON e.muscle_id = m.id
+    ORDER BY
+      e.rating
+    DESC LIMIT ?
+  `;
+
+  try {
+    // Menggunakan fungsi execute untuk mengeksekusi kueri
+    const [rows, fields] = await db.execute(sql, [limit]);
+
+    // Check if there are rows returned
+    if (rows.length === 0) {
+      return h.response({ error: "No matching data found" }).code(404);
+    }
+
+    // Map the rows to the desired response format
+    const exerciseData = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      rating: row.rating,
+      level: row.level,
+      cal_estimation: row.cal_estimation,
+      required_equipment: row.required_equipment,
+      overview: row.overview,
+      category: {
+        name: row.category_name,
+      },
+      is_support_interactive: row.is_support_interactive,
+      muscle: {
+        name: row.muscle_name,
+      },
+      gif_url: row.gif_url,
+      photo_url: row.photo_url,
+    }));
+
+    const response = {
+      status: "Success",
+      message: "Data berhasil diambil",
+      code: 200,
+      data: exerciseData,
+    };
+
+    return h.response(response);
+  } catch (error) {
+    console.error("Error executing exercise query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
-  });
-
-  return h.response({
-    status: "Success",
-    message: "Data berhasil diambil",
-    code: 200,
-    rows,
-  });
+  } finally {
+    // Mengakhiri koneksi setelah kueri selesai dieksekusi
+    await db.end();
+  }
 };
 
 module.exports = {
