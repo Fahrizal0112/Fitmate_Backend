@@ -97,8 +97,7 @@ const login = async (request, h) => {
 
   return h.response({
     status: "Failed",
-    message:
-      "Login gagal. Periksa kembali username, email, dan password Anda yaa...",
+    message: "Login gagal. Periksa kembali username, email, dan password Anda.",
     code: 404,
   });
 };
