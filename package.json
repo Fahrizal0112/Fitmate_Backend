@@ -5,8 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "schedule": "node schedule.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "CH-PS256",
   "license": "ISC",
