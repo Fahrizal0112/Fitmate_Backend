@@ -167,3 +167,7 @@ Example Response
     "data": [example_data]
 }
 ```
+
+## Cloud Computing Team CH2-PS256
+
+Capstone project for Bangkit 2023 Batch 2
