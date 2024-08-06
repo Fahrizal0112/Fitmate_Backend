@@ -302,7 +302,16 @@ const getDetailExercise = async (request, h) => {
       b.leftLeg,
       m.name AS muscle_name,
       e.gif_url,
-      e.photo_url
+      e.photo_url,
+      e.beginner_repeat,
+      e.beginner_session,
+      e.beginner_rest_time,
+      e.intermediate_repeat,
+      e.intermediate_session,
+      e.intermediate_rest_time,
+      e.advance_repeat,
+      e.advance_session,
+      e.advance_rest_time
     FROM
       exercise e
       LEFT JOIN category c ON e.category_id = c.id
@@ -365,6 +374,15 @@ const getDetailExercise = async (request, h) => {
         },
         gif_url: exerciseData.gif_url,
         photo_url: exerciseData.photo_url,
+        beginner_repeat: exerciseData.beginner_repeat,
+        beginner_session: exerciseData.beginner_session,
+        beginner_rest_time: exerciseData.beginner_rest_time,
+        intermediate_repeat: exerciseData.intermediate_repeat,
+        intermediate_session: exerciseData.intermediate_session,
+        intermediate_rest_time: exerciseData.intermediate_rest_time,
+        advance_repeat: exerciseData.advance_repeat,
+        advance_session: exerciseData.advance_session,
+        advance_rest_time: exerciseData.advance_rest_time
       },
     };
 
