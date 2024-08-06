@@ -31,7 +31,7 @@ const getExercise = async (request, h) => {
       e.intermediate_rest_time,
       e.advance_repeat,
       e.advance_session,
-      e.advace_rest_time,
+      e.advance_rest_time
     FROM
       exercise e
       LEFT JOIN category c ON e.category_id = c.id
@@ -73,6 +73,15 @@ const getExercise = async (request, h) => {
       },
       gif_url: row.gif_url,
       photo_url: row.photo_url,
+      beginner_repeat: row.beginner_repeat,
+      beginner_session: row.beginner_session,
+      beginner_rest_time: row.beginner_rest_time,
+      intermediate_repeat: row.intermediate_repeat,
+      intermediate_session: row.intermediate_session,
+      intermediate_rest_time: row.intermediate_rest_time,
+      advance_repeat: row.advance_repeat,
+      advance_session: row.advance_session,
+      advance_rest_time: row.advance_rest_time
     }));
 
     const response = {
