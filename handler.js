@@ -22,7 +22,16 @@ const getExercise = async (request, h) => {
       e.is_support_interactive,
       m.name AS muscle_name,
       e.gif_url,
-      e.photo_url
+      e.photo_url,
+      e.beginner_repeat,
+      e.beginner_session,
+      e.beginner_rest_time,
+      e.intermediate_repeat,
+      e.intermediate_session,
+      e.intermediate_rest_time,
+      e.advance_repeat,
+      e.advance_session,
+      e.advace_rest_time,
     FROM
       exercise e
       LEFT JOIN category c ON e.category_id = c.id
@@ -406,7 +415,6 @@ const getCategory = async (request, h) => {
     console.error("Error executing exercise query:", error);
     return h.response({ error: "Internal Server Error" }).code(500);
   } finally {
-    // Mengakhiri koneksi setelah kueri selesai dieksekusi
     await db.end();
   }
 };
